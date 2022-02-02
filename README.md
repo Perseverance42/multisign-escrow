@@ -1,15 +1,13 @@
-# Basic Sample Hardhat Project
+# Solidity Multisign Escrow
 
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, a sample script that deploys that contract, and an example of a task implementation, which simply lists the available accounts.
+This project does create escrow contract instances which can hold ERC20 tokens on behalf of multiple addresses and coordinate their spending.
+An escrow instance has to be initialized with the number of signer addresses and the minimum approvals needed to allow the spending of held tokens (threshold).
+Each escrow instance has to be primed by submitting addresses until all signer slots are occupied.
+Signers and threshold of a primed escrow instance can not be changed.
 
-Try running some of the following tasks:
 
-```shell
-npx hardhat accounts
-npx hardhat compile
-npx hardhat clean
-npx hardhat test
-npx hardhat node
-node scripts/sample-script.js
-npx hardhat help
-```
+## Deployed instances on public networks
+  | Cronos testnet   |                                            |
+  | ---------------- | ------------------------------------------ |
+  | EscrowFactory:   | 0xf4B146FbA71F41E0592668ffbF264F1D186b2Ca8 |
+  | MultisigEscrow: | 0x202CCe504e04bEd6fC0521238dDf04Bc9E8E15aB |
