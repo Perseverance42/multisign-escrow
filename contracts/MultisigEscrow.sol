@@ -1,6 +1,5 @@
-pragma solidity ^0.8.0;
 // SPDX-License-Identifier: MIT
-// OpenZeppelin Contracts v4.4.1 (utils/escrow/Escrow.sol)
+pragma solidity ^0.8.0;
 
 import '@openzeppelin/contracts/utils/Address.sol';
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
@@ -30,7 +29,7 @@ contract MultisigEscrow{
     constructor(uint signerCount, uint proposalThreshold ){
         require(signerCount>0);
         require(proposalThreshold<=signerCount);
-        _owner = msg.sender;
+        _owner = tx.origin;
         _signers = new address[](signerCount);
         _proposalThreshold = proposalThreshold;
         _n = 1;
