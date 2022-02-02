@@ -179,7 +179,7 @@ describe("Authorizations", function () {
 });
 
 describe("Functionallity", function () {
-  it("happy-path basic", async function () {
+  it("happy-path erc20", async function () {
     const [owner, addr1, addr2] = await ethers.getSigners();
     
     const escrow = await deployAndPrimeEscrow(addr1.address, addr2.address);
@@ -224,6 +224,56 @@ describe("Functionallity", function () {
     expect(await escrow.depositsOf(coin.address)).to.equals(0);
     expect(await coin.balanceOf(escrow.address)).to.equals(0);
     expect(await coin.balanceOf(addr1.address)).to.equals(10);    
+  });
+
+  it("happy-path eth", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    const escrow = await deployAndPrimeEscrow(addr1.address, addr2.address);
+    
+    let tx = await owner.sendTransaction({
+      to: escrow.address,
+      value: 10, // Sends exactly 1.0 ether
+    });
+    
+    expect(await escrow.depositsOf(NULL_ADDR)).to.equals(10);
+  
+    let nonce = await escrow.nonce();
+    await escrow.connect(addr1).proposeWithdrawl(nonce, NULL_ADDR, "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B", 10);
+
+    let activeProposal = await escrow.activeProposal();
+    expect(activeProposal.receiver).to.equals("0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B");
+    expect(activeProposal.amount).to.equals(10);
+    expect(activeProposal.approvals[0]).to.equals(false);
+    expect(activeProposal.approvals[1]).to.equals(false);
+
+    nonce = await escrow.nonce();
+    await escrow.connect(addr1).signProposal(nonce, true);
+    activeProposal = await escrow.activeProposal();
+    expect(activeProposal.approvals[0]).to.equals(true);
+    expect(activeProposal.approvals[1]).to.equals(false);
+    
+    nonce = await escrow.nonce();
+    await escrow.connect(addr2).signProposal(nonce, true);
+    activeProposal = await escrow.activeProposal();
+    expect(activeProposal.approvals[0]).to.equals(true);
+    expect(activeProposal.approvals[1]).to.equals(true);
+
+    //anyone can execute this
+    const receipt = await escrow.executeProposal();
+    activeProposal = await escrow.activeProposal();
+
+    //check if proposal was reset properly
+    expect(activeProposal.token).to.equals(NULL_ADDR);
+    expect(activeProposal.receiver).to.equals(NULL_ADDR);
+    expect(activeProposal.amount).to.equals(0);
+    expect(activeProposal.approvals).to.empty;
+
+    //check if token transfer has actually happened
+    expect(await escrow.depositsOf(NULL_ADDR)).to.equals(0);
+    expect(await ethers.provider.getBalance(escrow.address)).to.equals(0);
+    expect(await ethers.provider.getBalance("0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B")).to.equals(10);
+ 
   });
 });
 
