@@ -4,10 +4,16 @@ const { ethers } = require("hardhat");
 const NULL_ADDR = "0x0000000000000000000000000000000000000000";
 
 async function deployEscrow(){
-  const Escrow = await ethers.getContractFactory("MultisigEscrow");
-  const escrow = await Escrow.deploy(2,2);
+  const [owner, addr1, addr2] = await ethers.getSigners();
+  const EscrowFactory  = await ethers.getContractFactory("EscrowFactory");
+  const escrowFactory  = await EscrowFactory.deploy();
+  const escrowAddr     = await escrowFactory.createEscrow(2,2);
+  let receipt = await escrowAddr.wait();
 
-  await escrow.deployed();
+  const MultisigEscrow = await ethers.getContractFactory("MultisigEscrow");
+  const escrow         = await MultisigEscrow.attach(receipt.events[0].args.escrow);
+
+  expect(await escrow.controller()).to.equals(owner.address);
   return escrow;
 }
 
@@ -176,57 +182,69 @@ describe("Authorizations", function () {
     expect(proposal.approvals[1]).to.equals(true);
     
   });
+
+  it("Valid nonce is enforced", async function(){
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    const escrow = await deployAndPrimeEscrow(addr1.address, addr2.address);
+    const coin = await deploySampleToken();
+
+    //prepare proposal
+    let nonce = await escrow.nonce();
+    await expect(escrow.connect(addr1).proposeWithdrawl(nonce+1, coin.address, addr1.address, 0)).to.be.revertedWith("Wrong nonce");
+    await expect(escrow.connect(addr1).proposeWithdrawl(10000000000, coin.address, addr1.address, 0)).to.be.revertedWith("Wrong nonce");
+
+    //check if nonce has not changed
+    expect(await escrow.nonce()).to.equals(nonce);
+
+    await escrow.connect(addr1).proposeWithdrawl(nonce, coin.address, addr1.address, 0);
+    let proposal = await escrow.activeProposal();
+
+    //check if nonce increased
+    new_nonce = await escrow.nonce();
+    expect(new_nonce.toNumber()).to.greaterThan(nonce.toNumber());
+    nonce = new_nonce;
+
+    expect(proposal.token).to.equals(coin.address);
+    expect(proposal.receiver).to.equals(addr1.address);
+    
+    //nonce shall be enforced on signing
+    await expect(escrow.connect(addr1).signProposal(nonce-1, true)).to.be.revertedWith('Wrong nonce');
+    expect(await escrow.nonce()).to.equals(nonce);
+
+    //addr1 should be allowed
+    nonce = await escrow.nonce();
+    await escrow.connect(addr1).signProposal(nonce, true);
+    proposal = await escrow.activeProposal();
+    expect(proposal.approvals[0]).to.equals(true);
+    expect(proposal.approvals[1]).to.equals(false);
+
+    //check if nonce increased
+    new_nonce = await escrow.nonce();
+    expect(new_nonce.toNumber()).to.greaterThan(nonce.toNumber());
+    nonce = new_nonce;
+
+    //addr2 should be allowed
+    nonce = await escrow.nonce();
+
+    //nonce shall be enforced on signing
+    await expect(escrow.connect(addr2).signProposal(nonce+1, true)).to.be.revertedWith('Wrong nonce');
+    expect(await escrow.nonce()).to.equals(nonce);
+
+    await escrow.connect(addr2).signProposal(nonce, true);
+
+    new_nonce = await escrow.nonce();
+    expect(new_nonce.toNumber()).to.greaterThan(nonce.toNumber());
+    nonce = new_nonce;
+
+    proposal = await escrow.activeProposal();
+    expect(proposal.approvals[1]).to.equals(true);
+    expect(proposal.approvals[1]).to.equals(true);
+    
+  });
 });
 
 describe("Functionallity", function () {
-  it("happy-path erc20", async function () {
-    const [owner, addr1, addr2] = await ethers.getSigners();
-    
-    const escrow = await deployAndPrimeEscrow(addr1.address, addr2.address);
-    const coin = await deploySampleToken();
-    
-    await coin.transfer(escrow.address, 10);
-    expect(await escrow.depositsOf(coin.address)).to.equals(10);
-    expect(await coin.balanceOf(escrow.address)).to.equals(10);
-
-    let nonce = await escrow.nonce();
-    await escrow.connect(addr1).proposeWithdrawl(nonce, coin.address, addr1.address, 10);
-
-    let activeProposal = await escrow.activeProposal();
-    expect(activeProposal.receiver).to.equals(addr1.address);
-    expect(activeProposal.amount).to.equals(10);
-    expect(activeProposal.approvals[0]).to.equals(false);
-    expect(activeProposal.approvals[1]).to.equals(false);
-
-    nonce = await escrow.nonce();
-    await escrow.connect(addr1).signProposal(nonce, true);
-    activeProposal = await escrow.activeProposal();
-    expect(activeProposal.approvals[0]).to.equals(true);
-    expect(activeProposal.approvals[1]).to.equals(false);
-    
-    nonce = await escrow.nonce();
-    await escrow.connect(addr2).signProposal(nonce, true);
-    activeProposal = await escrow.activeProposal();
-    expect(activeProposal.approvals[0]).to.equals(true);
-    expect(activeProposal.approvals[1]).to.equals(true);
-
-    //anyone can execute this
-    await escrow.executeProposal();
-    activeProposal = await escrow.activeProposal();
-
-    //check if proposal was reset properly
-    expect(activeProposal.token).to.equals(NULL_ADDR);
-    expect(activeProposal.receiver).to.equals(NULL_ADDR);
-    expect(activeProposal.amount).to.equals(0);
-    expect(activeProposal.approvals).to.empty;
-
-    //check if token transfer has actually happened
-    expect(await escrow.depositsOf(coin.address)).to.equals(0);
-    expect(await coin.balanceOf(escrow.address)).to.equals(0);
-    expect(await coin.balanceOf(addr1.address)).to.equals(10);    
-  });
-
-  it("happy-path eth", async function () {
+  it("basic-path eth", async function () {
     const [owner, addr1, addr2] = await ethers.getSigners();
     
     const escrow = await deployAndPrimeEscrow(addr1.address, addr2.address);
@@ -274,6 +292,116 @@ describe("Functionallity", function () {
     expect(await ethers.provider.getBalance(escrow.address)).to.equals(0);
     expect(await ethers.provider.getBalance("0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B")).to.equals(10);
  
+  });
+
+  it("complex-path erc20", async function () {
+    const [owner, addr1, addr2] = await ethers.getSigners();
+    
+    const escrow = await deployAndPrimeEscrow(addr1.address, addr2.address);
+    const coin = await deploySampleToken();
+    
+    await coin.transfer(escrow.address, 100);
+    expect(await escrow.depositsOf(coin.address)).to.equals(100);
+    expect(await coin.balanceOf(escrow.address)).to.equals(100);
+
+    //try executing with no proposal
+    await expect(escrow.executeProposal()).to.be.revertedWith('No active proposal!');
+
+    let nonce = await escrow.nonce();
+    await escrow.connect(addr1).proposeWithdrawl(nonce, coin.address, addr1.address, 50);
+
+    let activeProposal = await escrow.activeProposal();
+    expect(activeProposal.receiver).to.equals(addr1.address);
+    expect(activeProposal.amount).to.equals(50);
+    expect(activeProposal.approvals[0]).to.equals(false);
+    expect(activeProposal.approvals[1]).to.equals(false);
+
+    //try executing with no signatures
+    await expect(escrow.executeProposal()).to.be.revertedWith('Quorum not reached!');
+
+    nonce = await escrow.nonce();
+    await escrow.connect(addr1).signProposal(nonce, true);
+    activeProposal = await escrow.activeProposal();
+    expect(activeProposal.approvals[0]).to.equals(true);
+    expect(activeProposal.approvals[1]).to.equals(false);
+
+    //try executing with to few signatures
+    await expect(escrow.executeProposal()).to.be.revertedWith('Quorum not reached!');
+    
+    nonce = await escrow.nonce();
+    await escrow.connect(addr2).signProposal(nonce, true);
+    activeProposal = await escrow.activeProposal();
+    expect(activeProposal.approvals[0]).to.equals(true);
+    expect(activeProposal.approvals[1]).to.equals(true);
+
+    //anyone can execute this
+    await escrow.executeProposal();
+    activeProposal = await escrow.activeProposal();
+
+    //check if proposal was reset properly
+    expect(activeProposal.token).to.equals(NULL_ADDR);
+    expect(activeProposal.receiver).to.equals(NULL_ADDR);
+    expect(activeProposal.amount).to.equals(0);
+    expect(activeProposal.approvals).to.empty;
+
+    //try executing with no proposal
+    await expect(escrow.executeProposal()).to.be.revertedWith('No active proposal!');
+
+    //check if token transfer has actually happened
+    expect(await escrow.depositsOf(coin.address)).to.equals(50);
+    expect(await coin.balanceOf(escrow.address)).to.equals(50);
+    expect(await coin.balanceOf(addr1.address)).to.equals(50);    
+    expect(await coin.balanceOf(addr2.address)).to.equals(0);
+
+    //////////////////////////////////
+    //propose withdrawl of second half
+    //////////////////////////////////
+
+    nonce = await escrow.nonce();
+    await escrow.connect(addr1).proposeWithdrawl(nonce, coin.address, addr2.address, 50);
+
+    activeProposal = await escrow.activeProposal();
+    expect(activeProposal.receiver).to.equals(addr2.address);
+    expect(activeProposal.amount).to.equals(50);
+    expect(activeProposal.approvals[0]).to.equals(false);
+    expect(activeProposal.approvals[1]).to.equals(false);
+
+    //try executing with no signatures
+    await expect(escrow.executeProposal()).to.be.revertedWith('Quorum not reached!');
+
+    nonce = await escrow.nonce();
+    await escrow.connect(addr1).signProposal(nonce, true);
+    activeProposal = await escrow.activeProposal();
+    expect(activeProposal.approvals[0]).to.equals(true);
+    expect(activeProposal.approvals[1]).to.equals(false);
+
+    //try executing with to few signatures
+    await expect(escrow.executeProposal()).to.be.revertedWith('Quorum not reached!');
+    
+    nonce = await escrow.nonce();
+    await escrow.connect(addr2).signProposal(nonce, true);
+    activeProposal = await escrow.activeProposal();
+    expect(activeProposal.approvals[0]).to.equals(true);
+    expect(activeProposal.approvals[1]).to.equals(true);
+
+    //anyone can execute this
+    await escrow.executeProposal();
+    activeProposal = await escrow.activeProposal();
+
+    //check if proposal was reset properly
+    expect(activeProposal.token).to.equals(NULL_ADDR);
+    expect(activeProposal.receiver).to.equals(NULL_ADDR);
+    expect(activeProposal.amount).to.equals(0);
+    expect(activeProposal.approvals).to.empty;
+
+    //try executing with no proposal
+    await expect(escrow.executeProposal()).to.be.revertedWith('No active proposal!');
+
+    //check if token transfer has actually happened
+    expect(await escrow.depositsOf(coin.address)).to.equals(0);
+    expect(await coin.balanceOf(escrow.address)).to.equals(0);
+    expect(await coin.balanceOf(addr1.address)).to.equals(50);    
+    expect(await coin.balanceOf(addr2.address)).to.equals(50);
   });
 });
 
