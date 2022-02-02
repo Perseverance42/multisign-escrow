@@ -1,6 +1,6 @@
 # Solidity Multisign Escrow
 
-This project allowes one to create a escrow contract instance which can hold ERC20 tokens on behalf of multiple addresses and control spending.
+This project does create escrow contract instances which can hold ERC20 tokens on behalf of multiple addresses and coordinate their spending.
 An escrow instance has to be initialized with the number of signer addresses and the minimum approvals needed to allow the spending of held tokens (threshold).
 Each escrow instance has to be primed by submitting addresses until all signer slots are occupied.
 Signers and threshold of a primed escrow instance can not be changed.
