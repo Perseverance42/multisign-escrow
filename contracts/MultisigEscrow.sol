@@ -74,7 +74,7 @@ contract MultisigEscrow{
         _n = 1;
         emit Initialized(_owner);
     }
-    /*    Recieve native token hook    */
+    /*    Receive native token hook    */
     receive()  external payable {
         emit Received(msg.sender, msg.value);
     }
@@ -103,8 +103,11 @@ contract MultisigEscrow{
     function activeProposal() public view returns(address token, address receiver, uint256 amount, bool[] memory approvals, uint256 n){
         return(_activeProposal.token, _activeProposal.receiver, _activeProposal.amount, _activeProposal.approvals, _n);
     }
-    
+
     /*    Setters    */
+
+    //sets address as a signer.
+    //once all signer slots are occupied the instance will be primed and this function becomes permanently deactivated.
     function setSigner(uint16 id, address signer) public onlyOwner() {
         _signers[id] = signer;
         bool primed = true;
@@ -119,11 +122,15 @@ contract MultisigEscrow{
         }
     }
 
+    //propose a new withdrawl request
+    //if tokenAddr is set to nulladdress native token will be send.
+    //nonce has to match the current nonce to ensure approvals are given to a known state.
+    //nonce does increase whenever the proposal state does change.
     function proposeWithdrawl(uint256 _nonce, address tokenAddr, address receiver, uint256 amount ) public virtual signersOnly() {
         require(_nonce==_n, 'Wrong nonce');
-        if(tokenAddr == address(0)){
+        if(tokenAddr == address(0)){ //check native token balance
             require(address(this).balance>=amount,'Not enough in deposits');
-        }else{
+        }else{ //check erc20 token balance
             IERC20 token = IERC20(tokenAddr);
             require(token.balanceOf(address(this))>=amount,'Not enough in deposits');
         }      
@@ -132,6 +139,7 @@ contract MultisigEscrow{
         emit Propose(tokenAddr, receiver, amount);
     }
 
+    //sets approval to first fitting signer slot on currently active proposal
     function signProposal(uint256 _nonce, bool approve) public virtual signersOnly(){
         require(_nonce==_n, 'Wrong nonce');
         uint16 i;
@@ -143,6 +151,7 @@ contract MultisigEscrow{
         signProposalIndexed(_nonce, i, approve);
     }
 
+    //sets approval to specific signer slot on currently active proposal
     function signProposalIndexed(uint256 _nonce, uint16 signerId, bool approve) public virtual signersOnly(){
         require(_nonce==_n, 'Wrong nonce');
         require(msg.sender == _signers[signerId], 'unauthorized index');
@@ -151,6 +160,8 @@ contract MultisigEscrow{
         _n = _n + 1;
     }
  
+    //executes proposal if approval threshold is reached.
+    //anyone is allowed to execute this as quorum and parameters are controlled by signers.
     function executeProposal() public virtual {
         require(_activeProposal.approvals.length==_signers.length, 'No active proposal!');
         uint16 quorum = 0;
@@ -160,11 +171,11 @@ contract MultisigEscrow{
             }
         }
         require(quorum >= _proposalThreshold, 'Quorum not reached!');
-        if(_activeProposal.token == address(0)){
+        if(_activeProposal.token == address(0)){ //send native token
             require(address(this).balance>=_activeProposal.amount,'Not enough deposited!');
             address payable to = payable(_activeProposal.receiver);
             to.transfer(_activeProposal.amount);
-        }else{
+        }else{ //send erc20 asset
             IERC20 erc20 = IERC20(_activeProposal.token);
             require( erc20.balanceOf(address(this))>=_activeProposal.amount,'Not enough deposited!');
             erc20.transfer(_activeProposal.receiver, _activeProposal.amount);
