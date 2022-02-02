@@ -8,9 +8,10 @@ import '@openzeppelin/contracts/token/ERC20/ERC20.sol';
 contract MultisigEscrow{
     using Address for address payable;
 
+    event Received(address indexed depositer, uint256 weiAmount);
     event Withdrawn(address indexed token, address indexed receiver, uint256 weiAmount);
     event Propose(address indexed token, address indexed receiver, uint256 weiAmount, uint256 nonce);
-
+    
     address private _owner;
 
     address[] private _signers;
@@ -20,7 +21,7 @@ contract MultisigEscrow{
     uint256  private _n;
     
     struct Proposal {
-        ERC20 token;
+        address token;
         address receiver;
         uint256 amount;
         bool[] approvals;
@@ -66,11 +67,15 @@ contract MultisigEscrow{
     }
 
     function proposeWithdrawl(uint256 _nonce, address tokenAddr, address receiver, uint256 amount ) public virtual signersOnly() {
-        ERC20 token = ERC20(tokenAddr);
         require(_nonce==_n, 'Wrong nonce');
-        require(token.balanceOf(address(this))>=amount,'Not enough in deposits');
+        if(tokenAddr == address(0)){
+            require(address(this).balance>=amount,'Not enough in deposits');
+        }else{
+            ERC20 token = ERC20(tokenAddr);
+            require(token.balanceOf(address(this))>=amount,'Not enough in deposits');
+        }      
         _n = _n + 1;
-        _activeProposal = Proposal(token, receiver, amount, new bool[](_signers.length));
+        _activeProposal = Proposal(tokenAddr, receiver, amount, new bool[](_signers.length));
         emit Propose(tokenAddr, receiver, amount, _n);
     }
 
@@ -87,8 +92,16 @@ contract MultisigEscrow{
     }
 
     function depositsOf(address tokenAddr) public view returns (uint256) {
-        ERC20 token = ERC20(tokenAddr);
-        return token.balanceOf(address(this));
+        if(tokenAddr == address(0)){
+            return address(this).balance;
+        }else{
+            ERC20 token = ERC20(tokenAddr);
+            return token.balanceOf(address(this));
+        }
+    }
+
+    receive()  external payable {
+        emit Received(msg.sender, msg.value);
     }
 
     function signers() public view returns(address[] memory){
@@ -115,8 +128,17 @@ contract MultisigEscrow{
             }
         }
         require(quorum >= _proposalThreshold, 'Quorum not reached!');
-        _activeProposal.token.transfer(_activeProposal.receiver, _activeProposal.amount);
+        if(_activeProposal.token == address(0)){
+            require(address(this).balance>=_activeProposal.amount,'Not enough deposited!');
+            address payable to = payable(_activeProposal.receiver);
+            to.transfer(_activeProposal.amount);
+        }else{
+            ERC20 erc20 = ERC20(_activeProposal.token);
+            require( erc20.balanceOf(address(this))>=_activeProposal.amount,'Not enough deposited!');
+            erc20.transfer(_activeProposal.receiver, _activeProposal.amount);
+        }
+        
         delete _activeProposal;
-        emit Withdrawn(address(_activeProposal.token), _activeProposal.receiver, _activeProposal.amount);
+        emit Withdrawn(_activeProposal.token, _activeProposal.receiver, _activeProposal.amount);
     }
 }
