@@ -237,6 +237,17 @@ describe("Authorizations", function () {
     expect(new_nonce.toNumber()).to.greaterThan(nonce.toNumber());
     nonce = new_nonce;
 
+    let nonceToAttack = await escrow.nonce();
+    nonce = nonceToAttack;
+
+    //sneaking in other proposals should not be possible
+    await escrow.connect(addr1).proposeWithdrawl(nonce, NULL_ADDR, addr2.address, 0);
+    await expect(escrow.connect(addr2).signProposal(nonceToAttack, true)).to.be.revertedWith('Wrong nonce');
+
+    proposal = await escrow.activeProposal();
+    expect(proposal.approvals[0]).to.equals(false);
+    expect(proposal.approvals[1]).to.equals(false);
+    
     //addr2 should be allowed
     nonce = await escrow.nonce();
 
@@ -246,12 +257,23 @@ describe("Authorizations", function () {
 
     await escrow.connect(addr2).signProposal(nonce, true);
 
+    proposal = await escrow.activeProposal();
+    expect(proposal.approvals[0]).to.equals(false);
+    expect(proposal.approvals[1]).to.equals(true);
+
+    new_nonce = await escrow.nonce();
+    expect(new_nonce.toNumber()).to.greaterThan(nonce.toNumber());
+    nonce = new_nonce;
+
+    //addr2 needs to approve again
+    await escrow.connect(addr1).signProposal(nonce, true);
+
     new_nonce = await escrow.nonce();
     expect(new_nonce.toNumber()).to.greaterThan(nonce.toNumber());
     nonce = new_nonce;
 
     proposal = await escrow.activeProposal();
-    expect(proposal.approvals[1]).to.equals(true);
+    expect(proposal.approvals[0]).to.equals(true);
     expect(proposal.approvals[1]).to.equals(true);
     
   });
