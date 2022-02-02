@@ -3,14 +3,14 @@ pragma solidity ^0.8.0;
 // OpenZeppelin Contracts v4.4.1 (utils/escrow/Escrow.sol)
 
 import '@openzeppelin/contracts/utils/Address.sol';
-import '@openzeppelin/contracts/token/ERC20/ERC20.sol';
+import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 
 contract MultisigEscrow{
     using Address for address payable;
 
     event Received(address indexed depositer, uint256 weiAmount);
     event Withdrawn(address indexed token, address indexed receiver, uint256 weiAmount);
-    event Propose(address indexed token, address indexed receiver, uint256 weiAmount, uint256 nonce);
+    event Propose(address indexed token, address indexed receiver, uint256 weiAmount);
     
     address private _owner;
 
@@ -71,12 +71,12 @@ contract MultisigEscrow{
         if(tokenAddr == address(0)){
             require(address(this).balance>=amount,'Not enough in deposits');
         }else{
-            ERC20 token = ERC20(tokenAddr);
+            IERC20 token = IERC20(tokenAddr);
             require(token.balanceOf(address(this))>=amount,'Not enough in deposits');
         }      
         _n = _n + 1;
         _activeProposal = Proposal(tokenAddr, receiver, amount, new bool[](_signers.length));
-        emit Propose(tokenAddr, receiver, amount, _n);
+        emit Propose(tokenAddr, receiver, amount);
     }
 
     function signProposal(uint256 _nonce, bool approve) public virtual signersOnly(){
@@ -95,7 +95,7 @@ contract MultisigEscrow{
         if(tokenAddr == address(0)){
             return address(this).balance;
         }else{
-            ERC20 token = ERC20(tokenAddr);
+            IERC20 token = IERC20(tokenAddr);
             return token.balanceOf(address(this));
         }
     }
@@ -116,11 +116,12 @@ contract MultisigEscrow{
         return _n;
     }
 
-    function activeProposal() public view returns(Proposal memory){
-        return _activeProposal;
+    function activeProposal() public view returns(address token, address receiver, uint256 amount, bool[] memory approvals, uint256 n){
+        return(_activeProposal.token, _activeProposal.receiver, _activeProposal.amount, _activeProposal.approvals, _n);
     }
  
     function executeProposal() public virtual {
+        require(_activeProposal.approvals.length==_signers.length, 'No active proposal!');
         uint quorum = 0;
         for(uint i=0;i<_signers.length;i++){
             if(_activeProposal.approvals[i]){
@@ -133,7 +134,7 @@ contract MultisigEscrow{
             address payable to = payable(_activeProposal.receiver);
             to.transfer(_activeProposal.amount);
         }else{
-            ERC20 erc20 = ERC20(_activeProposal.token);
+            IERC20 erc20 = IERC20(_activeProposal.token);
             require( erc20.balanceOf(address(this))>=_activeProposal.amount,'Not enough deposited!');
             erc20.transfer(_activeProposal.receiver, _activeProposal.amount);
         }
