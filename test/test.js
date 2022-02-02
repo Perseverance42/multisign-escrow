@@ -19,8 +19,10 @@ async function deployEscrow(){
 
 async function deployAndPrimeEscrow(signer1, signer2){
   const escrow = await deployEscrow();
-  await escrow.setSigner(0,signer1);
-  await escrow.setSigner(1,signer2);
+  let tx = await escrow.setSigner(0,signer1);
+  await tx.wait();
+  tx = await escrow.setSigner(1,signer2);
+  await expect(tx).to.emit(escrow, "Primed");
 
   const signers = await escrow.signers();
   expect(signers[0]).to.equals(signer1);
@@ -166,6 +168,13 @@ describe("Authorizations", function () {
     proposal = await escrow.activeProposal();
     expect(proposal.approvals[0]).to.equals(true);
     expect(proposal.approvals[1]).to.equals(false);
+
+    //addr1 should not be allowed to sign for addr2
+    nonce = await escrow.nonce();
+    await expect(escrow.connect(addr1).signProposalIndexed(nonce, 1, true)).to.be.revertedWith('unauthorized index');
+    proposal = await escrow.activeProposal();
+    expect(proposal.approvals[0]).to.equals(true);
+    expect(proposal.approvals[1]).to.equals(false);    
 
     //addr1 should be allowed to withdraw approval
     nonce = await escrow.nonce();

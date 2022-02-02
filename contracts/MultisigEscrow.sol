@@ -10,6 +10,7 @@ contract MultisigEscrow{
     event Received(address indexed depositer, uint256 weiAmount);
     event Withdrawn(address indexed token, address indexed receiver, uint256 weiAmount);
     event Propose(address indexed token, address indexed receiver, uint256 weiAmount);
+    event Primed();
     
     address private _owner;
 
@@ -45,6 +46,7 @@ contract MultisigEscrow{
         }
         if(primed){
             _owner = address(0);
+            emit Primed();
         }
     }
 
@@ -86,7 +88,13 @@ contract MultisigEscrow{
                 break;
             }
         }
-        _activeProposal.approvals[i] = approve;
+        signProposalIndexed(_nonce, i, approve);
+    }
+
+    function signProposalIndexed(uint256 _nonce, uint signerId, bool approve) public virtual signersOnly(){
+        require(_nonce==_n, 'Wrong nonce');
+        require(msg.sender == _signers[signerId], 'unauthorized index');
+        _activeProposal.approvals[signerId] = approve;
         _n = _n + 1;
     }
 
