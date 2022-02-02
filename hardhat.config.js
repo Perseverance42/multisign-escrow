@@ -1,5 +1,6 @@
 require("dotenv").config();
 require("@nomiclabs/hardhat-waffle");
+require("@nomiclabs/hardhat-etherscan");
 
 // This is a sample Hardhat task. To learn how to create your own go to
 // https://hardhat.org/guides/create-task.html
@@ -31,7 +32,7 @@ const getHDWallet = () => {
  */
 module.exports = {
   solidity: "0.8.4",
-  defaultNetwork: "testnetCronos",
+  defaultNetwork: "hardhat",
   networks:{
     hardhat:{
 
@@ -44,6 +45,9 @@ module.exports = {
       chainId: 338,
       accounts: getHDWallet()
     }
+  },
+  etherscan:{
+    apiKey: process.env.API_KEY
   },
   settings: {
     optimizer: {

@@ -5,13 +5,18 @@ const NULL_ADDR = "0x0000000000000000000000000000000000000000";
 
 async function deployEscrow(){
   const [owner, addr1, addr2] = await ethers.getSigners();
+  const Escrow = await ethers.getContractFactory("MultisigEscrow");
+  const referenceEscrow = await Escrow.deploy();
+
+  await referenceEscrow.deployed();
+
   const EscrowFactory  = await ethers.getContractFactory("EscrowFactory");
-  const escrowFactory  = await EscrowFactory.deploy();
+  const escrowFactory  = await EscrowFactory.deploy(referenceEscrow.address);
   const escrowAddr     = await escrowFactory.createEscrow(2,2);
   let receipt = await escrowAddr.wait();
 
   const MultisigEscrow = await ethers.getContractFactory("MultisigEscrow");
-  const escrow         = await MultisigEscrow.attach(receipt.events[0].args.escrow);
+  const escrow         = await MultisigEscrow.attach(receipt.events[1].args.escrow);
 
   expect(await escrow.controller()).to.equals(owner.address);
   return escrow;

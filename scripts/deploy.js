@@ -15,8 +15,15 @@ async function main() {
   // await hre.run('compile');
 
   // We get the contract to deploy
+  const Escrow = await ethers.getContractFactory("MultisigEscrow");
+  const escrow = await Escrow.deploy();
+
+  await escrow.deployed();
+
+  console.log("Reference contract deployed to:", escrow.address);
+
   const EscrowFactory = await ethers.getContractFactory("EscrowFactory");
-  const escrowFactory = await EscrowFactory.deploy();
+  const escrowFactory = await EscrowFactory.deploy(escrow.address);
 
   await escrowFactory.deployed();
 

@@ -11,11 +11,13 @@ contract MultisigEscrow{
     event Withdrawn(address indexed token, address indexed receiver, uint256 weiAmount);
     event Propose(address indexed token, address indexed receiver, uint256 weiAmount);
     event Primed();
+    event Signed(address indexed signer, bool approved, uint256 n);
+    event Initialized(address owner);
     
     address private _owner;
 
     address[] private _signers;
-    uint private _proposalThreshold;
+    uint16 private _proposalThreshold;
 
     Proposal private _activeProposal;
     uint256  private _n;
@@ -27,19 +29,24 @@ contract MultisigEscrow{
         bool[] approvals;
     }
 
-    constructor(uint signerCount, uint proposalThreshold ){
+    constructor(){
+    }
+
+    function initialize(address owner, uint16 signerCount, uint16 proposalThreshold) external{
+        require(_n==0,'already initialized');
         require(signerCount>0);
         require(proposalThreshold<=signerCount);
-        _owner = tx.origin;
+        _owner = owner;
         _signers = new address[](signerCount);
         _proposalThreshold = proposalThreshold;
         _n = 1;
+        emit Initialized(_owner);
     }
 
-    function setSigner(uint id, address signer) public onlyOwner() {
+    function setSigner(uint16 id, address signer) public onlyOwner() {
         _signers[id] = signer;
         bool primed = true;
-        for(uint i=0;i<_signers.length;i++){
+        for(uint16 i=0;i<_signers.length;i++){
             if(_signers[i]==address(0)){
                 primed = false;
             }
@@ -52,7 +59,7 @@ contract MultisigEscrow{
 
     modifier signersOnly(){
         bool found = false;
-        for(uint i=0;i<_signers.length;i++){
+        for(uint16 i=0;i<_signers.length;i++){
             if(_signers[i]==msg.sender){
                 found = true;
             }
@@ -82,7 +89,7 @@ contract MultisigEscrow{
 
     function signProposal(uint256 _nonce, bool approve) public virtual signersOnly(){
         require(_nonce==_n, 'Wrong nonce');
-        uint256 i;
+        uint16 i;
         for(i=0;i<_signers.length;i++){
             if(msg.sender == _signers[i]){
                 break;
@@ -91,10 +98,11 @@ contract MultisigEscrow{
         signProposalIndexed(_nonce, i, approve);
     }
 
-    function signProposalIndexed(uint256 _nonce, uint signerId, bool approve) public virtual signersOnly(){
+    function signProposalIndexed(uint256 _nonce, uint16 signerId, bool approve) public virtual signersOnly(){
         require(_nonce==_n, 'Wrong nonce');
         require(msg.sender == _signers[signerId], 'unauthorized index');
         _activeProposal.approvals[signerId] = approve;
+        emit Signed(_signers[signerId], approve, _n);
         _n = _n + 1;
     }
 
@@ -129,8 +137,8 @@ contract MultisigEscrow{
  
     function executeProposal() public virtual {
         require(_activeProposal.approvals.length==_signers.length, 'No active proposal!');
-        uint quorum = 0;
-        for(uint i=0;i<_signers.length;i++){
+        uint16 quorum = 0;
+        for(uint16 i=0;i<_signers.length;i++){
             if(_activeProposal.approvals[i]){
                 quorum = quorum + 1;
             }
